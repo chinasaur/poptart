@@ -149,6 +149,7 @@ int main(int argc, char *argv[]) {
    uint32_t text_size = 20;
    int loop = 0;
    char *command = NULL;
+   char *input = NULL;
 
    // Parse command-line arguments (getopt)
    int c;
@@ -179,7 +180,7 @@ int main(int argc, char *argv[]) {
             abort ();
       }
    if (seconds_duration == 0) return 0;
-   if (optind >= argc && !command) return 1;
+   if (optind >= argc && !command) input = fslurp(stdin);
 
    //printf("optind = %d, argc = %d\n", optind, argc);
    //printf("%s\n", text);
@@ -196,9 +197,9 @@ int main(int argc, char *argv[]) {
 
    char *text;
    do {
-      if (!command) text = argv[optind];
-      else          text = run_command(command);
-      //printf("%p\n", text);
+      if      (command) text = run_command(command);
+      else if (input)   text = input;
+      else              text = argv[optind];
 
       // Draw the toast text
       uint32_t y_offset = height - 60 + text_size/2;
