@@ -1,6 +1,10 @@
 /*
 PopTart: toast notifications for RaspberryPi
 
+See README.md for more information.
+
+Copyleft 2012, Peter H. Li
+
 Derived from the RaspberryPi hello_font example program; see Broadcom copyright
 and license below.
 
@@ -32,18 +36,13 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-// Test app for VG font library.
-
 #include <stdio.h>
 #include <ctype.h>
-//#include <stdlib.h>
-//#include <string.h>
 #include <assert.h>
 #include <unistd.h>
 
 #include "bcm_host.h"
 #include "vgfont.h"
-
 
 
 int LAYER = 1;
@@ -57,9 +56,9 @@ void init_screen() {
 
 
 /**
- * Not really clear why we make a window the whole screen size instead of just what's needed
- * for the text.  To get text_extent without an existing img, seems like should be doable
- * if we include vgft.h
+ * Not really clear why we make a window the whole screen size instead of just 
+ * what's needed for the text.  We should be able to get the text extent 
+ * without an existing resource if we include vgft.h
  */
 GRAPHICS_RESOURCE_HANDLE make_transparent_canvas(uint32_t width, uint32_t height) {
    GRAPHICS_RESOURCE_HANDLE img;
@@ -130,8 +129,8 @@ int32_t render_toast(GRAPHICS_RESOURCE_HANDLE img, uint32_t img_w, uint32_t img_
    uint32_t width = 0, height = 0;
    int s = graphics_resource_text_dimensions_ext(img, text, 0, &width, &height, text_size);
    if (s != 0) return s;
+   
    int32_t x_offset = ((int32_t) img_w - (int32_t) width) / 2;
-
    s = graphics_resource_render_text_ext(img, x_offset, y_offset - height,
                                      GRAPHICS_RESOURCE_WIDTH,
                                      GRAPHICS_RESOURCE_HEIGHT,
@@ -145,19 +144,22 @@ int32_t render_toast(GRAPHICS_RESOURCE_HANDLE img, uint32_t img_w, uint32_t img_
 
 int main(int argc, char *argv[]) {
    // Defaults
-   double seconds_duration = 1; 
+   double seconds_duration = 2; 
    uint32_t text_size = 20;
    int loop = 0;
    char *command = NULL;
-   char *input = NULL;
+   char *text = NULL;
 
    // Parse command-line arguments (getopt)
    int c;
    opterr = 0;
-   while ((c = getopt(argc, argv, "c:ls:t:")) != -1)
+   while ((c = getopt(argc, argv, "c:ils:t:")) != -1)
       switch (c) {
          case 'c':
             command = optarg;
+            break;
+         case 'i':
+            text = fslurp(stdin);
             break;
          case 'l':
             loop = 1;
@@ -169,7 +171,7 @@ int main(int argc, char *argv[]) {
             seconds_duration = strtod(optarg, 0);
             break;
          case '?':
-            if (optopt == 't')
+            if (optopt == 'c' || optopt == 's' || optopt == 't')
                fprintf (stderr, "Option -%c requires an argument.\n", optopt);
             else if (isprint(optopt))
                fprintf (stderr, "Unknown option `-%c'.\n", optopt);
@@ -180,13 +182,10 @@ int main(int argc, char *argv[]) {
             abort ();
       }
    if (seconds_duration == 0) return 0;
-   if (optind >= argc && !command) input = fslurp(stdin);
-
-   //printf("optind = %d, argc = %d\n", optind, argc);
-   //printf("%s\n", text);
+   if (!text && optind < argc) text = argv[optind];
+   if (!text && !command) return 1;
 
    init_screen();
-
    uint32_t width, height;
    int s = graphics_get_display_size(0, &width, &height);
    assert(s == 0);
@@ -195,11 +194,8 @@ int main(int argc, char *argv[]) {
    uint32_t img_w, img_h;
    graphics_get_resource_size(img, &img_w, &img_h);
 
-   char *text;
    do {
-      if      (command) text = run_command(command);
-      else if (input)   text = input;
-      else              text = argv[optind];
+      if (command) text = run_command(command);
 
       // Draw the toast text
       uint32_t y_offset = height - 60 + text_size/2;
