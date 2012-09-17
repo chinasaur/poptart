@@ -77,9 +77,55 @@ GRAPHICS_RESOURCE_HANDLE make_transparent_canvas(uint32_t width, uint32_t height
 
 
 
-int32_t render_toast(GRAPHICS_RESOURCE_HANDLE img, const char *text, const uint32_t text_size, const uint32_t y_offset) {
-   uint32_t img_w, img_h;
-   graphics_get_resource_size(img, &img_w, &img_h);
+// Caller must free read_buffer
+// Adapted from http://stackoverflow.com/questions/1151029/unix-linux-ipc-reading-from-a-pipe-how-to-know-length-of-data-at-runtime
+char *fslurp(FILE *f) {
+   const int bytes_at_a_time = 2;
+   char *read_buffer = NULL;
+   int buffer_size = 0;
+   int buffer_offset = 0;
+   int chars_io;
+   while (1) {
+      if (buffer_offset + bytes_at_a_time > buffer_size) {
+        buffer_size = bytes_at_a_time + buffer_size * 2;
+        read_buffer = realloc(read_buffer, buffer_size);
+        if (!read_buffer) {
+          perror("memory");
+          exit(EXIT_FAILURE);
+        }
+      }
+
+      chars_io = fread(read_buffer + buffer_offset, 1, bytes_at_a_time, f);
+      if (chars_io <= 0) break;
+      buffer_offset += chars_io;
+   }
+
+   // Terminate
+   read_buffer = realloc(read_buffer, buffer_size + 1);
+   read_buffer[buffer_offset] = 0;
+
+   if (chars_io < 0) {
+      perror("read");
+      exit(EXIT_FAILURE);
+   }
+
+   return read_buffer;
+}
+
+
+
+char *run_command(const char *command) {
+   FILE *fpipe = (FILE*) popen(command, "r");
+   if (!fpipe) return NULL;
+   char *output = fslurp(fpipe);
+   pclose(fpipe);
+   return output;
+}
+
+
+
+
+int32_t render_toast(GRAPHICS_RESOURCE_HANDLE img, uint32_t img_w, uint32_t img_h, const char *text, const uint32_t text_size, const uint32_t y_offset) {
 
    uint32_t width = 0, height = 0;
    int s = graphics_resource_text_dimensions_ext(img, text, 0, &width, &height, text_size);
@@ -92,19 +138,29 @@ int32_t render_toast(GRAPHICS_RESOURCE_HANDLE img, const char *text, const uint3
                                      GRAPHICS_RGBA32(0xff,0xff,0xff,0xff), /* fg */
                                      GRAPHICS_RGBA32(0,0,0,0x80), /* bg */
                                      text, 0, text_size);
-   if (s == 0) graphics_update_displayed_resource(img, 0, 0, 0, 0);
    return s;
 }
 
 
 
 int main(int argc, char *argv[]) {
+   // Defaults
    double seconds_duration = 1; 
    uint32_t text_size = 20;
+   int loop = 0;
+   char *command = NULL;
+
+   // Parse command-line arguments (getopt)
    int c;
    opterr = 0;
-   while ((c = getopt(argc, argv, "s:t:")) != -1)
+   while ((c = getopt(argc, argv, "c:ls:t:")) != -1)
       switch (c) {
+         case 'c':
+            command = optarg;
+            break;
+         case 'l':
+            loop = 1;
+            break;
          case 's':
             text_size = atoi(optarg);
             break;
@@ -122,10 +178,8 @@ int main(int argc, char *argv[]) {
          default:
             abort ();
       }
-
    if (seconds_duration == 0) return 0;
-   if (optind >= argc) return 1;
-   const char *text = argv[optind];
+   if (optind >= argc && !command) return 1;
 
    //printf("optind = %d, argc = %d\n", optind, argc);
    //printf("%s\n", text);
@@ -137,14 +191,27 @@ int main(int argc, char *argv[]) {
    assert(s == 0);
 
    GRAPHICS_RESOURCE_HANDLE img = make_transparent_canvas(width, height);
+   uint32_t img_w, img_h;
+   graphics_get_resource_size(img, &img_w, &img_h);
 
-   // Draw the toast text
-   uint32_t y_offset = height - 60 + text_size/2;
-   render_toast(img, text, text_size, y_offset);
+   char *text;
+   do {
+      if (!command) text = argv[optind];
+      else          text = run_command(command);
+      //printf("%p\n", text);
 
-   // Sleep until time is up
-   if (seconds_duration < 0) sleep(-1);
-   else                      usleep(seconds_duration * 1000000);
+      // Draw the toast text
+      uint32_t y_offset = height - 60 + text_size/2;
+      graphics_resource_fill(img, 0, 0, img_w, img_h, GRAPHICS_RGBA32(0,0,0,0x00));
+      render_toast(img, img_w, img_h, text, text_size, y_offset);
+      graphics_update_displayed_resource(img, 0, 0, 0, 0);
+
+      // Sleep until time is up (negative duration means infinite)
+      if (seconds_duration < 0) sleep(-1);
+      else                      usleep(seconds_duration * 1000000);
+
+      if (command) free(text);
+   } while (loop);
 
    graphics_display_resource(img, 0, LAYER, 0, 0, GRAPHICS_RESOURCE_WIDTH, GRAPHICS_RESOURCE_HEIGHT, VC_DISPMAN_ROT0, 0);
    graphics_delete_resource(img);
