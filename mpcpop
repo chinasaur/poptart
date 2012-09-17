@@ -1,0 +1,6 @@
+#!/bin/sh
+
+while : ; do
+  ./poptart -t2.5 -s30 "`mpc current`" &
+  sleep 2
+done
