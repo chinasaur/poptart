@@ -45,11 +45,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "vgfont.h"
 
 
+const char *FONTDIR = "/opt/vc/src/hello_pi/hello_font"; // Path to Vera.ttf
 int LAYER = 1;
 
 void init_screen() {
    bcm_host_init();
-   int s = gx_graphics_init(".");
+   int s = gx_graphics_init(FONTDIR);
    assert(s == 0);
 }
 
@@ -143,6 +144,7 @@ int32_t render_toast(GRAPHICS_RESOURCE_HANDLE img, uint32_t img_w, uint32_t img_
 
 
 int main(int argc, char *argv[]) {
+
    // Defaults
    double seconds_duration = 2; 
    uint32_t text_size = 20;
@@ -185,15 +187,18 @@ int main(int argc, char *argv[]) {
    if (!text && optind < argc) text = argv[optind];
    if (!text && !command) return 1;
 
+   // Init, get display width & height
    init_screen();
    uint32_t width, height;
    int s = graphics_get_display_size(0, &width, &height);
    assert(s == 0);
 
+   // Create and display canvas (initialized as transparent)
    GRAPHICS_RESOURCE_HANDLE img = make_transparent_canvas(width, height);
    uint32_t img_w, img_h;
    graphics_get_resource_size(img, &img_w, &img_h);
 
+   // Only actually loop if requested from user, otherwise runs once
    do {
       if (command) text = run_command(command);
 
@@ -210,7 +215,9 @@ int main(int argc, char *argv[]) {
       if (command) free(text);
    } while (loop);
 
+   // I think this is just to put things back the way we found them?
    graphics_display_resource(img, 0, LAYER, 0, 0, GRAPHICS_RESOURCE_WIDTH, GRAPHICS_RESOURCE_HEIGHT, VC_DISPMAN_ROT0, 0);
+
    graphics_delete_resource(img);
    return 0;
 }
