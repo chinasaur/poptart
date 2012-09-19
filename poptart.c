@@ -100,8 +100,8 @@ char *fslurp(FILE *f) {
       buffer_offset += chars_io;
    }
 
-   // Terminate
-   read_buffer = realloc(read_buffer, buffer_size + 1);
+   // Don't forget to null-terminate!
+   read_buffer = realloc(read_buffer, buffer_offset + 1);
    read_buffer[buffer_offset] = 0;
 
    if (chars_io < 0) {
