@@ -1,2 +1,2 @@
 #!/bin/sh
-./poptart -t1 -s30 -c'mpc current' -l
+poptart -t1 -s30 -c'mpc current' -l
