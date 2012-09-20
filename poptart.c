@@ -85,7 +85,7 @@ char *fslurp(FILE *f) {
    int buffer_size = 0;
    int buffer_offset = 0;
    int chars_io;
-   while (1) {
+   do {
       if (buffer_offset + bytes_at_a_time > buffer_size) {
         buffer_size = bytes_at_a_time + buffer_size * 2;
         read_buffer = realloc(read_buffer, buffer_size);
@@ -96,18 +96,17 @@ char *fslurp(FILE *f) {
       }
 
       chars_io = fread(read_buffer + buffer_offset, 1, bytes_at_a_time, f);
-      if (chars_io <= 0) break;
+      if (chars_io < 0) {
+        perror("read");
+        exit(EXIT_FAILURE);
+      }
+
       buffer_offset += chars_io;
-   }
+   } while (chars_io > 0);
 
    // Don't forget to null-terminate!
    read_buffer = realloc(read_buffer, buffer_offset + 1);
    read_buffer[buffer_offset] = 0;
-
-   if (chars_io < 0) {
-      perror("read");
-      exit(EXIT_FAILURE);
-   }
 
    return read_buffer;
 }
