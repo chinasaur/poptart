@@ -1,0 +1,2 @@
+#!/bin/sh
+poptart -t1 -s20 -c'conky -i1' -l
