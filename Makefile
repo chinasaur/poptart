@@ -10,7 +10,7 @@ CFLAGS+=-DSTANDALONE -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DTARGET_POS
 
 LDFLAGS+=-L$(SDKSTAGE)/opt/vc/lib/ -lGLESv2 -lEGL -lopenmaxil -lbcm_host -lvcos -lvchiq_arm -L/opt/vc/src/hello_pi/libs/ilclient 
 
-INCLUDES+=-I$(SDKSTAGE)/opt/vc/include/ -I$(SDKSTAGE)/opt/vc/include/interface/vcos/pthreads -I./ -I/opt/vc/src/hello_pi/libs/ilclient -I/opt/vc/src/hello_pi/libs/vgfont
+INCLUDES+=-I$(SDKSTAGE)/opt/vc/include/ -I$(SDKSTAGE)/opt/vc/include/interface/vcos/pthreads -I$(SDKSTAGE)/opt/vc/include/interface/vmcs_host/linux -I./ -I/opt/vc/src/hello_pi/libs/ilclient -I/opt/vc/src/hello_pi/libs/vgfont
 
 all: $(BIN) $(LIB)
 
@@ -19,10 +19,10 @@ all: $(BIN) $(LIB)
 	$(CC) $(CFLAGS) $(INCLUDES) -g -c $< -o $@ -Wno-deprecated-declarations
 
 poptart: $(OBJS)
-	$(CC) -o $@ -Wl,--whole-archive $(OBJS) $(LDFLAGS) $(VGFONT) -Wl,--no-whole-archive -rdynamic
+	$(CC) -o $(BIN) -Wl,--whole-archive $(OBJS) $(LDFLAGS) $(VGFONT) -Wl,--no-whole-archive -rdynamic
 
 csli: $(OBJS)
-	$(CC) -o $@ -Wl,--whole-archive $(OBJS) $(LDFLAGS) $(VGFONTCSLI) -Wl,--no-whole-archive -rdynamic
+	$(CC) -o $(BIN) -Wl,--whole-archive $(OBJS) $(LDFLAGS) $(VGFONTCSLI) -Wl,--no-whole-archive -rdynamic
 
 %.a: $(OBJS)
 	$(AR) r $@ $^
