@@ -1,2 +1,12 @@
 #!/bin/sh
-poptart -t1 -s30 -c'mpc current' -l
+
+while getopts "f:" opt; do
+  case $opt in
+    f)
+      foldwidth="$OPTARG" ;;
+  esac
+done
+
+command="mpc current ${foldwidth+| fold -sw $foldwidth}"
+
+poptart -t1 -s30 -c"$command" -l
