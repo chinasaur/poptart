@@ -1,0 +1,6 @@
+#!/bin/sh
+poptart -t1 -s30 -l -c'echo quit | nc localhost 4445 | grep -F "101 
+112 
+113 
+114 
+116 " | cut -c5-80'
