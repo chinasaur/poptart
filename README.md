@@ -10,7 +10,7 @@ shouldn't need to do anything but here's the PR if for some reason you need to
 refer to it:
   https://github.com/raspberrypi/firmware/pull/95
 
-Right now there is no help text and the notifications only appear centered at the bottom of the screen.  There are a number of other options; see source for now (sorry!).
+Right now the notifications only appear centered at the bottom of the screen.
 
 The Makefile should work on Raspbian; it assumes libvgfont is built and is in /opt/vc/...  Older versions requried Vera.ttf to be in PWD when you ran poptart, but I believe I've fixed this so that it instead assumes Vera.ttf is in /opt/vc/...  This is untested but will be tested soon.  I'll try to make it more flexible about where it finds the font soon.  And eventually I hope to rewrite libvgfont to be a lot more flexible about these things.
 
