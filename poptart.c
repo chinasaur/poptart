@@ -37,9 +37,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <ctype.h>
 #include <assert.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "bcm_host.h"
 #include "vgfont.h"
@@ -76,10 +78,9 @@ GRAPHICS_RESOURCE_HANDLE make_transparent_canvas(uint32_t width, uint32_t height
 }
 
 
-
 // Caller must free read_buffer
 // Adapted from http://stackoverflow.com/questions/1151029/unix-linux-ipc-reading-from-a-pipe-how-to-know-length-of-data-at-runtime
-char *fslurp(FILE *f) {
+char *slurp(int filedes) {
    const int bytes_at_a_time = 2;
    char *read_buffer = NULL;
    int buffer_size = 0;
@@ -95,20 +96,36 @@ char *fslurp(FILE *f) {
         }
       }
 
-      chars_io = fread(read_buffer + buffer_offset, 1, bytes_at_a_time, f);
+      // This will block if FILEDES is still open but no bytes are available, unless
+      // FILEDES is marked O_NONBLOCK
+      chars_io = read(filedes, read_buffer + buffer_offset, bytes_at_a_time);
+
+      // If < 0, there is an error
       if (chars_io < 0) {
+
+        // If FILEDES is marked O_NONBLOCK, then if FILEDES is still open
+        // but no chars are available READ will return with -1 and set
+        // errno this way.
+        if (errno == EAGAIN) break;
+
         perror("read");
         exit(EXIT_FAILURE);
       }
 
       buffer_offset += chars_io;
-   } while (chars_io > 0);
+   } while (chars_io > 0); // If == 0, there was nothing left
 
    // Don't forget to null-terminate!
    read_buffer = realloc(read_buffer, buffer_offset + 1);
    read_buffer[buffer_offset] = 0;
 
    return read_buffer;
+}
+
+// Caller must free read_buffer
+char *fslurp(FILE *f) {
+  int filedes = fileno(f);
+  return slurp(filedes);
 }
 
 
@@ -142,26 +159,54 @@ int32_t render_toast(GRAPHICS_RESOURCE_HANDLE img, uint32_t img_w, uint32_t img_
 
 
 
+void print_help(void) {
+  printf(""
+"Usage: poptart [OPTIONS] [MESSAGE]\n"
+"\n"
+"poptart can be used in several different modes.  The standard mode is with a\n"
+"MESSAGE string passed as an argument; MESSAGE is displayed.  The string to\n"
+"display can also be piped; use the -i flag to instruct poptart to read from\n"
+"STDIN for its message.  The last mode is command mode; use the -c flag\n"
+"followed by a command string; poptart will run this command in the shell\n"
+"and use the command's STDOUT output as the display string.\n"
+"\n"
+"Command mode is most useful when combined with the -l flag, which causes\n"
+"poptart to loop and repeatedly call the command string.\n"
+"\n"
+"Other recognized OPTION flags:\n"
+"  -h         Show this help\n"
+"  -s SIZE    Set text font size\n"
+"  -t SEC     Set duration for string to be displayed\n"
+  );
+}
+
+
+
 int main(int argc, char *argv[]) {
 
    // Defaults
    double seconds_duration = 2; 
    uint32_t text_size = 20;
    int loop = 0;
-   char *command = NULL;
-   char *text = NULL;
 
    // Parse command-line arguments (getopt)
+   char *command = NULL;
+   char *text = NULL;
+   int in;
    int c;
    opterr = 0;
-   while ((c = getopt(argc, argv, "c:ils:t:")) != -1)
+   while ((c = getopt(argc, argv, "c:hils:t:")) != -1)
       switch (c) {
          case 'c':
             command = optarg;
             break;
          case 'i':
-            text = fslurp(stdin);
+            in = open("/dev/stdin", O_RDONLY | O_NONBLOCK);
+            text = slurp(in);
             break;
+         case 'h':
+            print_help();
+            return EXIT_SUCCESS;
          case 'l':
             loop = 1;
             break;
@@ -178,9 +223,10 @@ int main(int argc, char *argv[]) {
                fprintf (stderr, "Unknown option `-%c'.\n", optopt);
             else
                fprintf (stderr, "Unknown option character `\\x%x'.\n", optopt);
-               return 1;
+            print_help();
+            return EXIT_FAILURE;
          default:
-            abort ();
+            abort();
       }
    if (seconds_duration == 0) return 0;
    if (!text && optind < argc) text = argv[optind];
@@ -192,6 +238,8 @@ int main(int argc, char *argv[]) {
    int s = graphics_get_display_size(0, &width, &height);
    assert(s == 0);
 
+   printf("%d %d\n", width, height);
+   //width = 1200; height = 600;
    // Create and display canvas (initialized as transparent)
    GRAPHICS_RESOURCE_HANDLE img = make_transparent_canvas(width, height);
    uint32_t img_w, img_h;
@@ -218,5 +266,5 @@ int main(int argc, char *argv[]) {
    graphics_display_resource(img, 0, LAYER, 0, 0, GRAPHICS_RESOURCE_WIDTH, GRAPHICS_RESOURCE_HEIGHT, VC_DISPMAN_ROT0, 0);
 
    graphics_delete_resource(img);
-   return 0;
+   return EXIT_SUCCESS;
 }
