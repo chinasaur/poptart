@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <assert.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/time.h>
 
 #include "bcm_host.h"
 #include "vgfont.h"
@@ -65,7 +66,9 @@ void init_screen() {
  */
 GRAPHICS_RESOURCE_HANDLE make_transparent_canvas(uint32_t width, uint32_t height) {
    GRAPHICS_RESOURCE_HANDLE img;
-   int s = gx_create_window(0, width, height, GRAPHICS_RESOURCE_RGBA32, &img);
+   int s;
+
+   s = gx_create_window(0, width, height, GRAPHICS_RESOURCE_RGBA32, &img);
    assert(s == 0);
    
    // Make it transparent
@@ -91,13 +94,13 @@ char *slurp(int filedes) {
         buffer_size = bytes_at_a_time + buffer_size * 2;
         read_buffer = realloc(read_buffer, buffer_size);
         if (!read_buffer) {
-          perror("memory");
+          perror("realloc");
           exit(EXIT_FAILURE);
         }
       }
 
-      // This will block if FILEDES is still open but no bytes are available, unless
-      // FILEDES is marked O_NONBLOCK
+      // This will block if FILEDES is still open but no bytes are available, 
+      // unless FILEDES is marked O_NONBLOCK
       chars_io = read(filedes, read_buffer + buffer_offset, bytes_at_a_time);
 
       // If < 0, there is an error
@@ -132,28 +135,109 @@ char *fslurp(FILE *f) {
 
 char *run_command(const char *command) {
    FILE *fpipe = (FILE*) popen(command, "r");
-   if (!fpipe) return NULL;
+   if (!fpipe) {
+     perror("popen");
+     return NULL;
+   }
    char *output = fslurp(fpipe);
    pclose(fpipe);
    return output;
 }
 
 
+char *run_commandi(const char *command, int i) {
+  int n = snprintf(NULL, 0, command, i) + 1;
+  char *commandi = malloc(n * sizeof(char));
+  if (!commandi) {
+    perror("malloc");
+    return NULL;
+  }
+  snprintf(commandi, n, command, i);
 
+  char *ret = run_command(commandi);
+  free(commandi);
+  return ret;
+}
 
-int32_t render_toast(GRAPHICS_RESOURCE_HANDLE img, uint32_t img_w, uint32_t img_h, const char *text, const uint32_t text_size, const uint32_t y_offset) {
+int32_t render_toast(const GRAPHICS_RESOURCE_HANDLE img,
+  const uint32_t img_w, const uint32_t img_h,
+  const int32_t x_offset, const int32_t y_offset,
+  const char *text, const uint32_t text_size) {
 
-   uint32_t width = 0, height = 0;
-   int s = graphics_resource_text_dimensions_ext(img, text, 0, &width, &height, text_size);
+   int32_t s;
+
+   s = graphics_resource_fill(img, 0, 0, img_w, img_h, GRAPHICS_RGBA32(0,0,0,0x00));
    if (s != 0) return s;
-   
-   int32_t x_offset = ((int32_t) img_w - (int32_t) width) / 2;
-   s = graphics_resource_render_text_ext(img, x_offset, y_offset - height,
+    
+   s = graphics_resource_render_text_ext(img, x_offset, y_offset,
                                      GRAPHICS_RESOURCE_WIDTH,
                                      GRAPHICS_RESOURCE_HEIGHT,
                                      GRAPHICS_RGBA32(0xff,0xff,0xff,0xff), /* fg */
-                                     GRAPHICS_RGBA32(0,0,0,0x80), /* bg */
+                                     GRAPHICS_RGBA32(0,0,0,0x00), /* bg */
                                      text, 0, text_size);
+   if (s != 0) return s;
+     
+   graphics_update_displayed_resource(img, 0, 0, 0, 0);
+   return s;
+}
+
+double elapsed(struct timeval *init) {
+   struct timeval now;
+   int32_t esec;
+   int32_t eusec;
+   double e;
+
+   gettimeofday(&now, NULL);
+   esec  = now.tv_sec  - init->tv_sec;
+   eusec = now.tv_usec - init->tv_usec;
+   e = esec + (eusec / 1000000.0);
+   return e;
+}
+
+int32_t render_toast_scroll(const GRAPHICS_RESOURCE_HANDLE img, 
+  const uint32_t img_w, const uint32_t img_h, 
+  const char *text, const uint32_t text_size, 
+  const double seconds_duration, const int32_t scroll_speed) {
+
+   uint32_t width, height;
+   int s;
+   
+   s = graphics_resource_text_dimensions_ext(img, text, 0, &width, &height, text_size);
+   if (s != 0) return s;
+   int32_t x_offset = img_w;
+   const int32_t y_offset = img_h - height - 60;
+
+   struct timeval init;
+   gettimeofday(&init, NULL);
+   while (elapsed(&init) < seconds_duration) {
+      x_offset -= scroll_speed;
+      if (x_offset + (int32_t) width < 0) x_offset = img_w;
+      s = render_toast(img, img_w, img_h, x_offset, y_offset, text, text_size);
+      if (s != 0) return s;
+   }
+
+   return s;
+}
+
+
+int32_t render_toast_static(const GRAPHICS_RESOURCE_HANDLE img, 
+  const uint32_t img_w, const uint32_t img_h, 
+  const char *text, const uint32_t text_size, 
+  const double seconds_duration) {
+
+   uint32_t width, height;
+   int s = graphics_resource_text_dimensions_ext(img, text, 0, &width, &height, text_size);
+   if (s != 0) return s;
+   const int32_t x_offset = ((int32_t) img_w - (int32_t) width) / 2;
+   const uint32_t y_offset = img_h - height - 60;
+
+   s = render_toast(img, img_w, img_h, x_offset, y_offset, text, text_size);
+   if (s != 0) return s;
+
+   // Sleep until time is up (negative duration means infinite)
+   if (seconds_duration < 0) sleep(-1);
+   else                      usleep(seconds_duration * 1000000);
+
    return s;
 }
 
@@ -177,6 +261,11 @@ void print_help(void) {
 "  -h         Show this help\n"
 "  -s SIZE    Set text font size\n"
 "  -t SEC     Set duration for string to be displayed\n"
+"  -m PIX     Set the scrolling speed.  By default, MESSAGE is displayed\n"
+"             centered and static.  If PIX is > 0, then MESSAGE scrolls right\n"
+"             to left.  Currently the scroll speed is controlled very\n"
+"             crudely; you just give PIX as the number of pixels to step each\n"
+"             render cycle.\n"
   );
 }
 
@@ -188,6 +277,8 @@ int main(int argc, char *argv[]) {
    double seconds_duration = 2; 
    uint32_t text_size = 20;
    int loop = 0;
+   uint32_t scroll_speed = 0; // 0 means render_toast_static, otherwise 
+                              // render_toast_scroll
 
    // Parse command-line arguments (getopt)
    char *command = NULL;
@@ -195,7 +286,7 @@ int main(int argc, char *argv[]) {
    int in;
    int c;
    opterr = 0;
-   while ((c = getopt(argc, argv, "c:hils:t:")) != -1)
+   while ((c = getopt(argc, argv, "c:hilm:s:t:")) != -1)
       switch (c) {
          case 'c':
             command = optarg;
@@ -209,6 +300,9 @@ int main(int argc, char *argv[]) {
             return EXIT_SUCCESS;
          case 'l':
             loop = 1;
+            break;
+         case 'm':
+            scroll_speed = atoi(optarg);
             break;
          case 's':
             text_size = atoi(optarg);
@@ -238,32 +332,35 @@ int main(int argc, char *argv[]) {
    int s = graphics_get_display_size(0, &width, &height);
    assert(s == 0);
 
-   printf("%d %d\n", width, height);
-   //width = 1200; height = 600;
    // Create and display canvas (initialized as transparent)
    GRAPHICS_RESOURCE_HANDLE img = make_transparent_canvas(width, height);
    uint32_t img_w, img_h;
    graphics_get_resource_size(img, &img_w, &img_h);
 
    // Only actually loop if requested from user, otherwise runs once
+   unsigned int loopcount = 0;
    do {
-      if (command) text = run_command(command);
-
+      if (command) text = run_commandi(command, loopcount);
+      
+      // perror should already have been called for report
+      if (!text) {
+        fprintf(stderr, "Error running command: %s", command);
+        exit(EXIT_FAILURE); 
+      }
+      
       // Draw the toast text
-      uint32_t y_offset = height - 60 + text_size/2;
-      graphics_resource_fill(img, 0, 0, img_w, img_h, GRAPHICS_RGBA32(0,0,0,0x00));
-      render_toast(img, img_w, img_h, text, text_size, y_offset);
-      graphics_update_displayed_resource(img, 0, 0, 0, 0);
-
-      // Sleep until time is up (negative duration means infinite)
-      if (seconds_duration < 0) sleep(-1);
-      else                      usleep(seconds_duration * 1000000);
-
+      if (!scroll_speed) {
+         render_toast_static(img, img_w, img_h, text, text_size, 
+            seconds_duration);
+      } else {
+         render_toast_scroll(img, img_w, img_h, text, text_size, 
+            seconds_duration, scroll_speed);
+      }
+      
       if (command) free(text);
+      ++loopcount;
    } while (loop);
 
-   // I think this is just to put things back the way we found them?
-   graphics_display_resource(img, 0, LAYER, 0, 0, GRAPHICS_RESOURCE_WIDTH, GRAPHICS_RESOURCE_HEIGHT, VC_DISPMAN_ROT0, 0);
 
    graphics_delete_resource(img);
    return EXIT_SUCCESS;
