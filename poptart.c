@@ -62,7 +62,8 @@ void init_screen() {
 /**
  * Not really clear why we make a window the whole screen size instead of just 
  * what's needed for the text.  We should be able to get the text extent 
- * without an existing resource if we include vgft.h
+ * without an existing resource if we include vgft.h, or if we pass a dummy
+ * res to the existing get_text_extents, or if we copy the logic over.
  */
 GRAPHICS_RESOURCE_HANDLE make_transparent_canvas(uint32_t width, uint32_t height) {
    GRAPHICS_RESOURCE_HANDLE img;
@@ -197,23 +198,38 @@ double elapsed(struct timeval *init) {
 int32_t render_toast_scroll(const GRAPHICS_RESOURCE_HANDLE img, 
   const uint32_t img_w, const uint32_t img_h, 
   const char *text, const uint32_t text_size, 
-  const double seconds_duration, const int32_t scroll_speed) {
+  const double scroll_update, const int32_t scroll_step,
+  const double seconds_duration) {
+
+   int s;
 
    uint32_t width, height;
-   int s;
-   
    s = graphics_resource_text_dimensions_ext(img, text, 0, &width, &height, text_size);
    if (s != 0) return s;
+   int32_t swidth = width;
    int32_t x_offset = img_w;
    const int32_t y_offset = img_h - height - 60;
 
    struct timeval init;
    gettimeofday(&init, NULL);
-   while (elapsed(&init) < seconds_duration) {
-      x_offset -= scroll_speed;
-      if (x_offset + (int32_t) width < 0) x_offset = img_w;
+   double e, next_scroll;
+   for (e = 0.0, next_scroll = 0.0; 
+        seconds_duration < 0.0 || e < seconds_duration;
+        e = elapsed(&init)) {
+
+      // Is it time to update?
+      if (e < next_scroll) {
+        usleep((next_scroll - e) * 1000000);
+        continue;
+      }
+      
       s = render_toast(img, img_w, img_h, x_offset, y_offset, text, text_size);
       if (s != 0) return s;
+      
+      x_offset -= scroll_step;
+      if (x_offset + swidth < 0) x_offset = img_w;
+
+      next_scroll += scroll_update;
    }
 
    return s;
@@ -261,11 +277,13 @@ void print_help(void) {
 "  -h         Show this help\n"
 "  -s SIZE    Set text font size\n"
 "  -t SEC     Set duration for string to be displayed\n"
-"  -m PIX     Set the scrolling speed.  By default, MESSAGE is displayed\n"
+"  -m PIX     Set the scroll step size.  By default, MESSAGE is displayed\n"
 "             centered and static.  If PIX is > 0, then MESSAGE scrolls right\n"
-"             to left.  Currently the scroll speed is controlled very\n"
-"             crudely; you just give PIX as the number of pixels to step each\n"
-"             render cycle.\n"
+"             to left by PIX pixels each scroll update.\n"
+"  -n SEC     Set the scroll update frequency.  Anything greater than 0.03\n"
+"             (30 ms) will tend to be noticeable.  If set to 0 the updates \n"
+"             will be as fast as possible, which on my Pi seems to be about\n"
+"             every 10 ms with no other graphics load.\n"
   );
 }
 
@@ -277,8 +295,9 @@ int main(int argc, char *argv[]) {
    double seconds_duration = 2; 
    uint32_t text_size = 20;
    int loop = 0;
-   uint32_t scroll_speed = 0; // 0 means render_toast_static, otherwise 
-                              // render_toast_scroll
+   double scroll_update = 0.03;
+   uint32_t scroll_step = 0; // 0 means render_toast_static, otherwise 
+                             // render_toast_scroll
 
    // Parse command-line arguments (getopt)
    char *command = NULL;
@@ -286,7 +305,7 @@ int main(int argc, char *argv[]) {
    int in;
    int c;
    opterr = 0;
-   while ((c = getopt(argc, argv, "c:hilm:s:t:")) != -1)
+   while ((c = getopt(argc, argv, "c:hilm:n:s:t:")) != -1)
       switch (c) {
          case 'c':
             command = optarg;
@@ -302,7 +321,10 @@ int main(int argc, char *argv[]) {
             loop = 1;
             break;
          case 'm':
-            scroll_speed = atoi(optarg);
+            scroll_step = atoi(optarg);
+            break;
+         case 'n':
+            scroll_update = strtod(optarg, 0);
             break;
          case 's':
             text_size = atoi(optarg);
@@ -349,12 +371,12 @@ int main(int argc, char *argv[]) {
       }
       
       // Draw the toast text
-      if (!scroll_speed) {
+      if (!scroll_step) {
          render_toast_static(img, img_w, img_h, text, text_size, 
             seconds_duration);
       } else {
          render_toast_scroll(img, img_w, img_h, text, text_size, 
-            seconds_duration, scroll_speed);
+            scroll_update, scroll_step, seconds_duration);
       }
       
       if (command) free(text);
