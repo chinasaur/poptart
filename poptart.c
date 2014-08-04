@@ -159,15 +159,19 @@ int32_t render_toast(
     const uint32_t img_h, const int32_t x_offset, const int32_t y_offset,
     const char *text, const uint32_t text_size,
     const uint32_t fg_rgba, const uint32_t bg_rgba) {
-   int32_t s = graphics_resource_render_text_ext(
+  // Clear existing.
+  int32_t s = graphics_resource_fill(
+      img, 0, 0, img_w, img_h, GRAPHICS_RGBA32(0, 0, 0, 0));
+
+  s = graphics_resource_render_text_ext(
       img, x_offset, y_offset,
       GRAPHICS_RESOURCE_WIDTH, GRAPHICS_RESOURCE_HEIGHT,
       fg_rgba, bg_rgba,
       text, 0, text_size);
-   if (s != 0) return s;
+  if (s != 0) return s;
  
-   graphics_update_displayed_resource(img, 0, 0, 0, 0);
-   return s;
+  graphics_update_displayed_resource(img, 0, 0, 0, 0);
+  return s;
 }
 
 double elapsed(struct timeval *init) {
