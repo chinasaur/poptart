@@ -20,7 +20,7 @@ all: $(BIN) $(LIB)
 	@rm -f $@ 
 	$(CC) $(CFLAGS) $(INCLUDES) -g -c $< -o $@ -Wno-deprecated-declarations
 
-vgfont/libvgfont.a:
+vgfont/libvgfont.a: vgfont/*.c vgfont/*.h
 	$(MAKE) -C vgfont
 
 poptart: vgfont/libvgfont.a $(OBJS)

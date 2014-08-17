@@ -154,17 +154,17 @@ void gx_priv_font_term(void)
   * FIXME: Not UTF-8 aware
   * FIXME: better caching
   */
-VCOS_STATUS_T gx_priv_render_text( GX_DISPLAY_T *disp,
-                                   GRAPHICS_RESOURCE_HANDLE res,
-                                   int32_t x,
-                                   int32_t y,
-                                   uint32_t width,
-                                   uint32_t height,
-                                   uint32_t fg_colour,
-                                   uint32_t bg_colour,
-                                   const char *text,
-                                   uint32_t text_length,
-                                   uint32_t text_size )
+VCOS_STATUS_T gx_priv_render_text(GX_DISPLAY_T *disp,
+                                  GRAPHICS_RESOURCE_HANDLE res,
+                                  int32_t x,
+                                  int32_t y,
+                                  uint32_t width,
+                                  uint32_t height,
+                                  uint32_t fg_colour,
+                                  uint32_t bg_colour,
+                                  const char *text,
+                                  uint32_t text_length,
+                                  uint32_t text_size )
 {
    VGfloat vg_colour[4];
    VGFT_FONT_T *font;
@@ -177,8 +177,7 @@ VCOS_STATUS_T gx_priv_render_text( GX_DISPLAY_T *disp,
 
    gx_priv_save(&save, res);
 
-   if (width == GRAPHICS_RESOURCE_WIDTH &&
-       height == GRAPHICS_RESOURCE_HEIGHT)
+   if (width == GRAPHICS_RESOURCE_WIDTH && height == GRAPHICS_RESOURCE_HEIGHT)
    {
       clip = 0;
    }
@@ -216,7 +215,11 @@ VCOS_STATUS_T gx_priv_render_text( GX_DISPLAY_T *disp,
 
       if ( ( 0 < (VGint)rendered_w ) && ( 0 < (VGint)rendered_h ) )
       {
-         vgClear(x, y, (VGint)rendered_w, (VGint)rendered_h);
+         // Have to compensate for the messed up y position of multiline text.
+         VGfloat offset = first_line_y_offset(font);
+         int32_t bottom = y + offset - rendered_h;
+
+         vgClear(x, bottom, (VGint)rendered_w, (VGint)rendered_h);
          err = vgGetError();
          if (err)
          {
@@ -249,7 +252,6 @@ VCOS_STATUS_T gx_priv_render_text( GX_DISPLAY_T *disp,
 
 finish:
    gx_priv_restore(&save);
-
    return status;
 }
 

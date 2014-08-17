@@ -266,6 +266,8 @@ static VGfloat adjustments_y[CHAR_COUNT_MAX];
 // and get a final adjustment based on the next character past char_count, or 
 // else just assume that this is the end of the text and add no final 
 // adjustment.
+//
+// Returns silently in some error cases.  Assert fails in some error cases.
 
 static void draw_chars(VGFT_FONT_T *font, const char *text, int char_count, VGbitfield paint_modes, int peek) {
    // Put in first character
@@ -273,14 +275,17 @@ static void draw_chars(VGFT_FONT_T *font, const char *text, int char_count, VGbi
    int prev_glyph_index = glyph_indices[0];
 
    // Calculate glyph_indices and adjustments
-   int i;
    FT_Vector kern;
+   int i;
    for (i = 1; i != char_count; ++i) {
       int glyph_index = FT_Get_Char_Index(font->ft_face, text[i]);
-      if (!glyph_index) { return; }
+      if (!glyph_index) return;
       glyph_indices[i] = glyph_index;
 
-      if (FT_Get_Kerning(font->ft_face, prev_glyph_index, glyph_index, FT_KERNING_DEFAULT, &kern)) assert(0);
+      if (FT_Get_Kerning(font->ft_face, prev_glyph_index, glyph_index,
+                         FT_KERNING_DEFAULT, &kern)) {
+        assert(0);
+      }
       adjustments_x[i - 1] = float_from_26_6(kern.x);
       adjustments_y[i - 1] = float_from_26_6(kern.y);
 
@@ -290,8 +295,11 @@ static void draw_chars(VGFT_FONT_T *font, const char *text, int char_count, VGbi
    // Get the last adjustment?
    if (peek) {
       int peek_glyph_index = FT_Get_Char_Index(font->ft_face, text[i]);
-      if (!peek_glyph_index) { return; }
-      if (FT_Get_Kerning(font->ft_face, prev_glyph_index, peek_glyph_index, FT_KERNING_DEFAULT, &kern)) assert(0);
+      if (!peek_glyph_index) return;
+      if (FT_Get_Kerning(font->ft_face, prev_glyph_index, peek_glyph_index,
+                         FT_KERNING_DEFAULT, &kern)) {
+        assert(0);
+      }
       adjustments_x[char_count - 1] = float_from_26_6(kern.x);
       adjustments_y[char_count - 1] = float_from_26_6(kern.y);
    } else {
@@ -299,13 +307,15 @@ static void draw_chars(VGFT_FONT_T *font, const char *text, int char_count, VGbi
       adjustments_y[char_count - 1] = 0.0f;
    }
 
-   vgDrawGlyphs(font->vg_font, char_count, glyph_indices, adjustments_x, adjustments_y, paint_modes, VG_FALSE);
+   vgDrawGlyphs(font->vg_font, char_count, glyph_indices,
+                adjustments_x, adjustments_y, paint_modes, VG_FALSE);
 }
 
 // Goes to the x,y position and draws arbitrary number of characters, draws 
 // iteratively if the char_count exceeds the max buffer size given above.
 
-static void draw_line(VGFT_FONT_T *font, VGfloat x, VGfloat y, const char *text, int char_count, VGbitfield paint_modes) {
+static void draw_line(VGFT_FONT_T *font, VGfloat x, VGfloat y, const char *text,
+                      int char_count, VGbitfield paint_modes) {
    if (char_count == 0) return;
 
    // Set origin to requested x,y
@@ -325,56 +335,68 @@ static void draw_line(VGFT_FONT_T *font, VGfloat x, VGfloat y, const char *text,
    draw_chars(font, curr_text, chars_left, paint_modes, 0);
 }
 
-void vgft_font_draw(VGFT_FONT_T *font, VGfloat x, VGfloat y, const char *text, unsigned text_length, VGbitfield paint_modes)
-{
-   VGfloat descent = float_from_26_6(font->ft_face->size->metrics.descender);
-   int last_draw = 0;
-   int i = 0;
-   y -= descent;
-   for (;;) {
-      int last = !text[i] || (text_length && i==text_length);
+// Draw multiple lines of text, starting from the given x and y.  The x and y
+// correspond to the lower left corner of the first line of text, without
+// descenders.  Unfortunately, for multiline text, this ends up in the middle of
+// the y-extent of the block.
 
-      if ((text[i] == '\n') || last)
-      {
+void vgft_font_draw(VGFT_FONT_T *font, VGfloat x, VGfloat y, const char *text,
+                    unsigned text_length, VGbitfield paint_modes) {
+   VGfloat descent = float_from_26_6(font->ft_face->size->metrics.descender);
+   y -= descent;
+
+   int i, last = 0, last_draw = 0;
+   for (i = 0; !last; ++i) {
+      last = !text[i] || (text_length && i==text_length);
+
+      if ((text[i] == '\n') || last) {
          draw_line(font, x, y, text + last_draw, i - last_draw, paint_modes);
-         last_draw = i+1;
+         last_draw = i + 1;
          y -= float_from_26_6(font->ft_face->size->metrics.height);
       }
-      if (last)
-      {
-         break;
-      }
-      ++i;
    }
 }
 
-// Get text extents for a single line
+// Get text extents for a single line.  Returns silently in some error cases.
+// Assert fails in some error cases.
 
-static void line_extents(VGFT_FONT_T *font, VGfloat *x, VGfloat *y, const char *text, int chars_count)
-{
-   int i;
-   int prev_glyph_index = 0;
+static void line_extents(VGFT_FONT_T *font, VGfloat *x, VGfloat *y,
+                         const char *text, int chars_count) {
    if (chars_count == 0) return;
 
-   for (i=0; i < chars_count; i++)
-   {
-      int glyph_index = FT_Get_Char_Index(font->ft_face, text[i]);
+   // Handle first character.
+   int glyph_index = FT_Get_Char_Index(font->ft_face, text[0]);
+   if (!glyph_index) return;
+   FT_Load_Glyph(font->ft_face, glyph_index, FT_LOAD_DEFAULT);
+   *x += float_from_26_6(font->ft_face->glyph->advance.x);
+   int prev_glyph_index = glyph_index;
+
+   int i;
+   for (i = 1; i < chars_count; ++i) {
+      glyph_index = FT_Get_Char_Index(font->ft_face, text[i]);
       if (!glyph_index) return;
 
-      if (i != 0)
-      {
-         FT_Vector kern;
-         if (FT_Get_Kerning(font->ft_face, prev_glyph_index, glyph_index,
-                            FT_KERNING_DEFAULT, &kern))
-         {
-            assert(0);
-         }
-         *x += float_from_26_6(kern.x);
-         *y += float_from_26_6(kern.y);
+      FT_Vector kern;
+      if (FT_Get_Kerning(font->ft_face, prev_glyph_index, glyph_index,
+                         FT_KERNING_DEFAULT, &kern)) {
+         assert(0);
       }
+      *x += float_from_26_6(kern.x);
+      *y += float_from_26_6(kern.y);
+
       FT_Load_Glyph(font->ft_face, glyph_index, FT_LOAD_DEFAULT);
       *x += float_from_26_6(font->ft_face->glyph->advance.x);
+
+      prev_glyph_index = glyph_index;
    }
+}
+
+// get y offset for first line; mitigates issue of start y being middle of block
+// for multiline renders by vgft_font_draw.  Currently simple, may be worth
+// adding y kerning?
+
+VGfloat first_line_y_offset(VGFT_FONT_T *font) {
+  return float_from_26_6(font->ft_face->size->metrics.height);
 }
 
 // Text extents for some ASCII text.
