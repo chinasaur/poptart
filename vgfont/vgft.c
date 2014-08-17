@@ -395,7 +395,7 @@ static void line_extents(VGFT_FONT_T *font, VGfloat *x, VGfloat *y,
 // for multiline renders by vgft_font_draw.  Currently simple, may be worth
 // adding y kerning?
 
-VGfloat first_line_y_offset(VGFT_FONT_T *font) {
+VGfloat vgft_first_line_y_offset(VGFT_FONT_T *font) {
   return float_from_26_6(font->ft_face->size->metrics.height);
 }
 
