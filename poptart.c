@@ -164,6 +164,7 @@ int32_t render_toast(
       img, 0, 0, img_w, img_h, GRAPHICS_RGBA32(0, 0, 0, 0));
 
   s = graphics_resource_render_text_ext(
+
       img, x_offset, y_offset,
       GRAPHICS_RESOURCE_WIDTH, GRAPHICS_RESOURCE_HEIGHT,
       fg_rgba, bg_rgba,
@@ -190,7 +191,7 @@ double elapsed(struct timeval *init) {
 int32_t render_toast_scroll(
     const GRAPHICS_RESOURCE_HANDLE img, 
     const uint32_t img_w, const uint32_t img_h, 
-    const char *text, const uint32_t text_size, 
+    const char *text, const uint32_t text_size, const uint32_t user_y_offset,
     const uint32_t fg_rgba, const uint32_t bg_rgba,
     const double scroll_update, const int32_t scroll_step,
     const double seconds_duration) {
@@ -200,7 +201,7 @@ int32_t render_toast_scroll(
   if (s != 0) return s;
   int32_t swidth = width;
   int32_t x_offset = img_w;
-  const int32_t y_offset = img_h - height - 60;
+  const int32_t y_offset = img_h - height - user_y_offset;
 
   struct timeval init;
   gettimeofday(&init, NULL);
@@ -231,14 +232,14 @@ int32_t render_toast_scroll(
 int32_t render_toast_static(
     const GRAPHICS_RESOURCE_HANDLE img, 
     const uint32_t img_w, const uint32_t img_h, 
-    const char *text, const uint32_t text_size, 
+    const char *text, const uint32_t text_size, const uint32_t user_y_offset,
     const uint32_t fg_rgba, const uint32_t bg_rgba,
     const double seconds_duration) {
   uint32_t width, height;
   int s = graphics_resource_text_dimensions_ext(img, text, 0, &width, &height, text_size);
   if (s != 0) return s;
   const int32_t x_offset = ((int32_t) img_w - (int32_t) width) / 2;
-  const uint32_t y_offset = img_h - height - 60;
+  const uint32_t y_offset = img_h - height - user_y_offset;
 
   s = render_toast(img, img_w, img_h, x_offset, y_offset, text, text_size, fg_rgba, bg_rgba);
   if (s != 0) return s;
@@ -295,7 +296,8 @@ int main(int argc, char *argv[]) {
    int in;
    int c;
    opterr = 0;
-   while ((c = getopt(argc, argv, "b:c:f:hilm:n:s:t:")) != -1)
+   uint32_t user_y_offset = 60;
+   while ((c = getopt(argc, argv, "b:c:f:hilm:n:s:t:y:")) != -1)
       switch (c) {
          case 'b':
             if (sscanf(optarg, "%u,%u,%u,%u", &bg_r, &bg_g, &bg_b, &bg_a) != 4) {
@@ -334,8 +336,11 @@ int main(int argc, char *argv[]) {
          case 't':
             seconds_duration = strtod(optarg, 0);
             break;
+	 case 'y':
+	    user_y_offset = atoi(optarg);
+	    break;
          case '?':
-            if (optopt == 'c' || optopt == 's' || optopt == 't')
+            if (optopt == 'c' || optopt == 's' || optopt == 't' || optopt == 'y')
                fprintf (stderr, "Option -%c requires an argument.\n", optopt);
             else if (isprint(optopt))
                fprintf (stderr, "Unknown option `-%c'.\n", optopt);
@@ -365,6 +370,7 @@ int main(int argc, char *argv[]) {
    GRAPHICS_RESOURCE_HANDLE img = make_transparent_canvas(width, height);
    uint32_t img_w, img_h;
    graphics_get_resource_size(img, &img_w, &img_h);
+   
 
    // Only actually loop if requested from user, otherwise runs once
    unsigned int loopcount = 0;
@@ -379,10 +385,10 @@ int main(int argc, char *argv[]) {
       
       // Draw the toast text
       if (!scroll_step) {
-         render_toast_static(img, img_w, img_h, text, text_size, 
+         render_toast_static(img, img_w, img_h, text, text_size, user_y_offset,
             fg_rgba, bg_rgba, seconds_duration);
       } else {
-         render_toast_scroll(img, img_w, img_h, text, text_size, 
+         render_toast_scroll(img, img_w, img_h, text, text_size, user_y_offset,
             fg_rgba, bg_rgba, scroll_update, scroll_step, seconds_duration);
       }
       
