@@ -164,7 +164,6 @@ int32_t render_toast(
       img, 0, 0, img_w, img_h, GRAPHICS_RGBA32(0, 0, 0, 0));
 
   s = graphics_resource_render_text_ext(
-
       img, x_offset, y_offset,
       GRAPHICS_RESOURCE_WIDTH, GRAPHICS_RESOURCE_HEIGHT,
       fg_rgba, bg_rgba,
@@ -275,6 +274,8 @@ void print_help(void) {
 "             (30 ms) will tend to be noticeable.  If set to 0 the updates \n"
 "             will be as fast as possible, which on my Pi seems to be about\n"
 "             every 10 ms with no other graphics load.\n"
+"  -y OFFSET  Set the y-axis offset.  The bottom of the text will be this many\n"
+"             pixels above the bottom of the screen.\n"
   );
 }
 
